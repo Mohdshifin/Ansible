@@ -1,0 +1,62 @@
+---
+- name: Setup SFTP User
+  hosts: web
+  become: yes
+
+  vars:
+    sftp_user: shifin
+    sftp_group: sftpusers
+    sftp_root: /home/shifin
+
+  tasks:
+
+    # Create group
+    - name: Create SFTP group
+      group:
+        name: "{{ sftp_group }}"
+        state: present
+
+    # Create user properly
+    - name: Create SFTP user
+      user:
+        name: "{{ sftp_user }}"
+        groups: "{{ sftp_group }}"
+        shell: /sbin/nologin
+        create_home: yes
+
+    # Fix chroot directory permissions
+    - name: Set correct permissions for home
+      file:
+        path: "{{ sftp_root }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    # Create uploads folder
+    - name: Create upload directory
+      file:
+        path: "{{ sftp_root }}/uploads"
+        state: directory
+        owner: "{{ sftp_user }}"
+        group: "{{ sftp_user }}"
+        mode: '0755'
+
+    # Configure SSH safely
+    - name: Configure sshd for SFTP
+      blockinfile:
+        path: /etc/ssh/sshd_config
+        marker: "# {mark} ANSIBLE SFTP CONFIG"
+        block: |
+          Match Group {{ sftp_group }}
+              ChrootDirectory %h
+              ForceCommand internal-sftp
+              X11Forwarding no
+              AllowTcpForwarding no
+      notify: Restart SSH
+
+  handlers:
+    - name: Restart SSH
+      service:
+        name: sshd
+        state: restarted

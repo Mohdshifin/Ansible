@@ -1,0 +1,89 @@
+---
+- name: Deploy WordPress
+  hosts: web
+  become: yes
+
+  vars:
+    username: shifin
+    website_name: mysite
+    web_root: "/home/{{ username }}/{{ website_name }}/public"
+
+    wp_db_name: wordpress_db
+    wp_db_user: wpuser
+    wp_db_password: wppassword
+
+  tasks:
+
+    # Install unzip if not present
+    - name: Install unzip
+      yum:
+        name: unzip
+        state: present
+
+    # Download WordPress
+    - name: Download WordPress
+      get_url:
+        url: https://wordpress.org/latest.zip
+        dest: /tmp/wordpress.zip
+
+    # Extract WordPress
+    - name: Extract WordPress
+      unarchive:
+        src: /tmp/wordpress.zip
+        dest: /tmp/
+        remote_src: yes
+
+    # Move WordPress files to web root
+    - name: Copy WordPress to web root
+      copy:
+        src: /tmp/wordpress/
+        dest: "{{ web_root }}/"
+        owner: nginx
+        group: nginx
+        mode: '0755'
+        remote_src: yes
+
+    # Create wp-config.php
+    - name: Configure WordPress
+      copy:
+        dest: "{{ web_root }}/wp-config.php"
+        content: |
+          <?php
+          define('DB_NAME', '{{ wp_db_name }}');
+          define('DB_USER', '{{ wp_db_user }}');
+          define('DB_PASSWORD', '{{ wp_db_password }}');
+          define('DB_HOST', '172.31.22.223');
+          define('DB_CHARSET', 'utf8');
+          define('DB_COLLATE', '');
+
+          define('AUTH_KEY',         'put your unique phrase here');
+          define('SECURE_AUTH_KEY',  'put your unique phrase here');
+          define('LOGGED_IN_KEY',    'put your unique phrase here');
+          define('NONCE_KEY',        'put your unique phrase here');
+
+          $table_prefix = 'wp_';
+
+          define('WP_DEBUG', false);
+
+          if ( !defined('ABSPATH') )
+              define('ABSPATH', dirname(__FILE__) . '/');
+
+          require_once(ABSPATH . 'wp-settings.php');
+
+    - name: Create WordPress DB
+      community.mysql.mysql_db:
+        name: "{{ wp_db_name }}"
+        state: present
+        login_user: root
+        login_password: mypassword
+
+    # Create DB user
+    - name: Create WordPress DB user
+      community.mysql.mysql_user:
+        name: "{{ wp_db_user }}"
+        password: "{{ wp_db_password }}"
+        priv: "{{ wp_db_name }}.*:ALL"
+        host: localhost
+        state: present
+        login_user: root
+        login_password: mypassword

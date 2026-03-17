@@ -1,0 +1,52 @@
+---
+- name: Setup SSL using Certbot (Nginx plugin)
+  hosts: web
+  become: yes
+
+  vars:
+    domain_name: shifin.duckdns.org
+    email: shifinkadambot@gmail.com
+
+  tasks:
+
+    # Install required packages
+    - name: Install dependencies
+      yum:
+        name:
+          - python3
+          - python3-pip
+          - nginx
+        state: present
+
+    # Install certbot + nginx plugin using pip
+    - name: Install certbot and nginx plugin
+      pip:
+        name:
+          - certbot
+          - certbot-nginx
+        executable: pip3
+
+    # Ensure nginx is running
+    - name: Start nginx
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+
+    # Run certbot with nginx plugin
+    - name: Generate SSL and configure nginx
+      command: >
+        /usr/local/bin/certbot --nginx
+        -d {{ domain_name }}
+        --non-interactive
+        --agree-tos
+        -m {{ email }}
+        --redirect
+
+    # Auto renewal
+    - name: Setup cron for renewal
+      cron:
+        name: "Certbot Auto Renewal"
+        job: "/usr/local/bin/certbot renew --quiet"
+        minute: "0"
+        hour: "3"

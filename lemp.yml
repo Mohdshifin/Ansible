@@ -1,0 +1,150 @@
+---
+- name: LEMP Setup with Custom Web Root
+  hosts: web
+  become: yes
+
+  vars:
+    username: shifin
+    website_name: mysite
+    web_root: "/home/{{ username }}/{{ website_name }}/public"
+
+  tasks:
+
+    # Install required packages
+    - name: Install packages
+      yum:
+        name:
+          - nginx
+          - mariadb-server
+          - php
+          - php-fpm
+          - php-mysqlnd
+        state: present
+
+    # Start and enable services
+    - name: Start Nginx
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: Start MariaDB
+      service:
+        name: mariadb
+        state: started
+        enabled: yes
+
+    - name: Start PHP-FPM
+      service:
+        name: php-fpm
+        state: started
+        enabled: yes
+
+    # Create user
+    - name: Create user
+      user:
+        name: "{{ username }}"
+        home: "/home/{{ username }}"
+        shell: /bin/bash
+
+    # Create website directory structure
+    - name: Create website directory
+      file:
+        path: "{{ web_root }}"
+        state: directory
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0755'
+        recurse: yes
+
+    # Set permissions for nginx
+    - name: Allow nginx access
+      file:
+        path: "/home/{{ username }}"
+        mode: '0755'
+
+    # Create sample index.php
+    - name: Create test PHP file
+      copy:
+        dest: "{{ web_root }}/index.php"
+        content: "<?php phpinfo(); ?>"
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0644'
+
+    # Configure Nginx
+    - name: Configure Nginx site
+      copy:
+        dest: /etc/nginx/conf.d/{{ website_name }}.conf
+        content: |
+          server {
+              listen 80;
+              server_name _;
+
+              root {{ web_root }};
+              index index.php index.html;
+
+              location / {
+                  try_files $uri $uri/ =404;
+              }
+
+              location ~ \.php$ {
+                  include fastcgi_params;
+                  fastcgi_pass 127.0.0.1:9000;
+                  fastcgi_index index.php;
+                  fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+              }
+          }
+
+    # Restart Nginx
+    - name: Restart Nginx
+      service:
+        name: nginx
+        state: restarted
+
+        # Install unzip (required)
+    - name: Install unzip
+      yum:
+        name: unzip
+        state: present
+
+    # Download phpMyAdmin
+    - name: Download phpMyAdmin
+      get_url:
+        url: https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip
+        dest: /tmp/phpmyadmin.zip
+
+    # Extract phpMyAdmin
+    - name: Extract phpMyAdmin
+      unarchive:
+        src: /tmp/phpmyadmin.zip
+        dest: /tmp/
+        remote_src: yes
+
+    # Move to web root
+    - name: Move phpMyAdmin to web directory
+      command: mv /tmp/phpMyAdmin-5.2.3-all-languages {{ web_root }}/phpmyadmin
+      args:
+        creates: "{{ web_root }}/phpmyadmin"
+
+    # Set permissions
+    - name: Set ownership
+      file:
+        path: "{{ web_root }}/phpmyadmin"
+        owner: nginx
+        group: nginx
+        recurse: yes
+
+    # Create config file
+    - name: Configure phpMyAdmin
+      copy:
+        dest: "{{ web_root }}/phpmyadmin/config.inc.php"
+        content: |
+          <?php
+          $cfg['blowfish_secret'] = 'mysecretkey123'; /* CHANGE THIS */
+          $i = 0;
+          $i++;
+          $cfg['Servers'][$i]['auth_type'] = 'cookie';
+          $cfg['Servers'][$i]['host'] = 'localhost';
+          $cfg['Servers'][$i]['compress'] = false;
+          $cfg['Servers'][$i]['AllowNoPassword'] = false;
